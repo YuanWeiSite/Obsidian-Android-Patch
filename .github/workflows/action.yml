@@ -1,0 +1,32 @@
+name: Check and patch Obsidian Android edition.
+on:
+  schedule:
+    - cron: "0 0 * * *"
+jobs:
+  check-and-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install Python requests Lib
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Setup JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Save keystore file
+        run: |
+          echo "${{ secrets.KEYSTORE }}" | base64 --decode > ks.keystore
+
+      - name: Run action.py
+        run: |
+          wget -O action.py https://github.com/YuanWeiSite/Obsidian-Android-Patch/raw/refs/heads/main/action.py
+          python action.py ${{ secrets.REPO_TOKEN }}
