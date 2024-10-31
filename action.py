@@ -3,13 +3,14 @@ import sys
 
 import requests
 
-OFFICIAL_OBSIDIAN_REPO_OWNER = 'obsidianmd'
-OFFICIAL_OBSIDIAN_REPO_NAME = 'obsidian-releases'
-THIS_REPO_OWNER = 'YuanWeiSite'
-THIS_REPO_NAME = 'Obsidian-Android-Patch'
-NEW_PACKAGE_NAME = 'site.yuanwei.md.obsidian'
+OFFICIAL_OBSIDIAN_REPO_OWNER = 'obsidianmd'  # Obsidian官方仓库
+OFFICIAL_OBSIDIAN_REPO_NAME = 'obsidian-releases'  # Obsidian官方仓库
+THIS_REPO_OWNER = 'YuanWeiSite'  # 此仓库
+THIS_REPO_NAME = 'Obsidian-Android-Patch'  # 此仓库
+NEW_PACKAGE_NAME = 'site.yuanwei.md.obsidian'  # apk新的包名
 
 
+# 获取某仓库的最新release的详细信息
 def get_latest_release_info(repo_owner, repo_name):
     api_url = f'https://api.github.com/repos/{repo_owner}/{repo_name}/releases/latest'
     response = requests.get(api_url)
@@ -20,6 +21,7 @@ def get_latest_release_info(repo_owner, repo_name):
         print(f"Failed to retrieve data: {response.status_code}")
 
 
+# 获取Obsidian官方仓库最新release的tag和apk文件下载链接
 def get_official_obsidian_repo_tag_and_apk_url():
     release_info = get_latest_release_info(OFFICIAL_OBSIDIAN_REPO_OWNER, OFFICIAL_OBSIDIAN_REPO_NAME)
     for asset in release_info['assets']:
@@ -27,11 +29,13 @@ def get_official_obsidian_repo_tag_and_apk_url():
             return release_info['tag_name'], asset['browser_download_url']
 
 
+# 获取此仓库的最新release的tag
 def get_this_repo_tag():
     release_info = get_latest_release_info(THIS_REPO_OWNER, THIS_REPO_NAME)
     return release_info['tag_name']
 
 
+# 下载文件到指定位置
 def download_file(url, file_name):
     try:
         response = requests.get(url)
@@ -45,9 +49,8 @@ def download_file(url, file_name):
         print(f"An error occurred: {e}")
 
 
-# 以字符串方式处理配置文件
-# 将<file_path>文件的<old_value>替换为<new_value>，最多<max_count>处
-# 不安全，但可以省去解析YML/XML的步骤
+# 以字符串替换的方式处理配置文件
+# 不标准，但可以避免特定XML配置文件解析/还原时出现问题
 def config_replace(file_path, old_value, new_value, max_count=1):
     try:
         with open(file_path, 'r') as file:
@@ -61,60 +64,58 @@ def config_replace(file_path, old_value, new_value, max_count=1):
 
 
 # 修改apk文件
-# 将<apk_name>.apk修改为<patched_apk_name>.apk
-def patch_apk(apk_name, patched_apk_name):
+# 添加信任用户证书
+# 修改包名
+# # input_apk_name 输入的apk文件名，不包含后缀
+# # output_apk_name 输出的apk文件名，不包含后缀
+def patch_apk(input_apk_name, output_apk_name):
     # 下载apktool
     download_file('https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.10.0.jar', 'apktool.jar')
 
     # 解包
-    os.system(f'java -jar apktool.jar d {apk_name}.apk')
+    os.system(f'java -jar apktool.jar d {input_apk_name}.apk')
 
-    # 添加network_security_config.xml文件
+    # 添加信任用户证书
+    # # 添加network_security_config.xml文件
     xml_content = '''<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
   <base-config cleartextTrafficPermitted="true">
     <trust-anchors>
-	      <certificates src="system" />
+      <certificates src="system" />
       <certificates src="user" />
     </trust-anchors>
   </base-config>
 </network-security-config>'''
     try:
-        with open(apk_name + '/res/xml/network_security_config.xml', 'w') as file:
+        with open(input_apk_name + '/res/xml/network_security_config.xml', 'w') as file:
             file.write(xml_content)
     except Exception as e:
         print(f"An error occurred: {e}")
 
-    # 编辑AndroidManifest.xml
-    config_replace(apk_name + '/AndroidManifest.xml', '<application',
+    # # 编辑AndroidManifest.xml
+    config_replace(input_apk_name + '/AndroidManifest.xml', '<application',
                    '<application android:networkSecurityConfig="@xml/network_security_config"')
 
-    # 编辑apktool.yml
-    config_replace(apk_name + '/apktool.yml', 'renameManifestPackage: null',
+    # 修改包名
+    # # 编辑apktool.yml
+    config_replace(input_apk_name + '/apktool.yml', 'renameManifestPackage: null',
                    f'renameManifestPackage: {NEW_PACKAGE_NAME}')
 
     # 重新打包
-    os.system(f'java -jar apktool.jar b {apk_name} -o {apk_name}.apk')
+    os.system(f'java -jar apktool.jar b {input_apk_name} -o {input_apk_name}.apk')
 
-    # 下载zipalign
-    download_file(f'https://github.com/{THIS_REPO_OWNER}/{THIS_REPO_NAME}/raw/refs/heads/main/zipalign', 'zipalign')
+    # 准备zipalign
     os.system('chmod +x ./zipalign')
-    os.mkdir('lib64')
-    download_file(f'https://github.com/{THIS_REPO_OWNER}/{THIS_REPO_NAME}/raw/refs/heads/main/lib64/libc++.so',
-                  'lib64/libc++.so')
 
     # zip对齐
-    os.system(f'./zipalign -v 4 {apk_name}.apk zip.apk')
-
-    # 下载apksigner
-    download_file(f'https://github.com/{THIS_REPO_OWNER}/{THIS_REPO_NAME}/raw/refs/heads/main/apksigner.jar',
-                  'apksigner.jar')
+    os.system(f'./zipalign -v 4 {input_apk_name}.apk zip.apk')
 
     # 签名
     os.system(
-        f'java -jar ./apksigner.jar sign --ks ks.keystore --ks-pass pass:000000 --out {patched_apk_name}.apk zip.apk')
+        f'java -jar ./apksigner.jar sign --ks ks.keystore --ks-pass pass:000000 --out {output_apk_name}.apk zip.apk')
 
 
+# 创建一个release
 def create_release(repo_owner, repo_name, tag_name, token):
     url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/releases"
     headers = {
@@ -123,7 +124,7 @@ def create_release(repo_owner, repo_name, tag_name, token):
     }
     data = {
         "tag_name": tag_name,
-        "target_commitish": "main",  # 或者你想要的目标分支
+        "target_commitish": "main",
         "name": tag_name,
         "body": "Patched Obsidian",
         "draft": False,
@@ -136,6 +137,7 @@ def create_release(repo_owner, repo_name, tag_name, token):
         raise Exception(f"Failed to create release: {response.status_code}, {response.text}")
 
 
+# 向release上传文件
 def upload_asset_to_release(repo_owner, repo_name, release_id, file_path, token, file_name):
     url = f"https://uploads.github.com/repos/{repo_owner}/{repo_name}/releases/{release_id}/assets"
     headers = {
@@ -171,5 +173,7 @@ if __name__ == '__main__':
                 print("File uploaded successfully.")
             except Exception as e_:
                 print(e_)
+        else:
+            print('Latest version.')
     else:
         print('sys.argv != 2')
