@@ -32,5 +32,4 @@ jobs:
 
       - name: Run action.py
         run: |
-          wget -O action.py https://github.com/YuanWeiSite/Obsidian-Android-Patch/raw/refs/heads/main/action.py
           python action.py ${{ secrets.REPO_TOKEN }}
